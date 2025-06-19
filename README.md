@@ -22,7 +22,7 @@ graph TD
   end
 
   subgraph Clients
-    C[HTTP Client / Postman / Frontend]
+    C[HTTP Client/Postman/Frontend]
     C --> K
     C --> O
     C --> U
