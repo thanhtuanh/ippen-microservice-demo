@@ -48,6 +48,8 @@ node_modules/
 # Sensitive files
 *.env
 *secret*.json
+.env
+.evn
 
 # Keycloak import/export temp files
 keycloak/data/

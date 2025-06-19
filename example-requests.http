@@ -25,7 +25,7 @@ Content-Type: application/x-www-form-urlencoded
 grant_type=password
 &client_id=order-service
 &username=alice
-&password=test
+&password=alicepass
 
 
 ### Bestellung anlegen (order-service, JWT benötigt)
