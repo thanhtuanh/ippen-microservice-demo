@@ -88,6 +88,7 @@ GET http://localhost:8081/users
 * Kubernetes (Minikube / EKS)
 * AWS SDK v2 (für S3 vorbereitet)
 * GitHub Actions für CI/CD
+* JUnit, Mockito, Spring Security Test
 
 ---
 
@@ -102,20 +103,27 @@ docker push ...
 
 ✅ Automatisierter CI/CD-Workflow (`.github/workflows/ci.yml`) beinhaltet:
 
-* Build & Unit-Test pro Service
+* Build & Unit-Test pro Service (`mvn verify`)
+* Upload von Testberichten (`surefire-reports`) als Artefakte
 * Push der Docker-Images zu Docker Hub
-* Tests werden bei jedem Push auf `main` ausgeführt
+* Tests werden bei jedem Push auf `main` oder Pull-Request ausgeführt
 
 ---
 
 ## ✅ Unit-Tests
 
-* Beispieltest: `OrderControllerTest.java`
-* Simulierte JWT-Authentifizierung über `spring-security-test`
-* Getrennte Tests pro Service
+* `OrderControllerTest.java`: GET `/orders` mit simuliertem JWT
+* `UserControllerTest.java`: GET `/users` ohne Authentifizierung
+* JUnit-basierte Tests mit `MockMvc` und `@WebMvcTest`
+* Test-Reports über GitHub Actions verfügbar (Artifacts)
 
 ```bash
+# Order-Service
 cd order-service
+mvn clean verify
+
+# User-Service
+cd user-service
 mvn clean verify
 ```
 
