@@ -8,26 +8,6 @@ Diese Demo zeigt eine moderne Microservice-Architektur mit **Spring Boot**, **Ke
 
 ## ⚙️ Architekturüberblick
 
-```mermaid
-graph TD
-  subgraph Auth & DB
-    K[Keycloak] --> U
-    M[(MySQL)]
-  end
-
-  subgraph Services
-    U[user-service] --> M
-    O[order-service] --> M
-    K --> O
-  end
-
-  subgraph Clients
-    C[HTTP Client/Postman/Frontend]
-    C --> K
-    C --> O
-    C --> U
-  end
-````
 ![alt text](image.png)
 ---
 
