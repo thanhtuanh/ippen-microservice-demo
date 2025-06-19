@@ -20,10 +20,32 @@ public class Order {
     }
 
     // Getter und Setter
-    public Long getId() { return id; }
-    public String getUser() { return user; }
-    public void setUser(String user) { this.user = user; }
-    public String getProduct() { return product; }
-    public void setProduct(String product) { this.product = product; }
-    public LocalDateTime getCreatedAt() { return createdAt; }
+    public Long getId() {
+        return id;
+    }
+
+    public String getUser() {
+        return user;
+    }
+
+    public void setUser(String user) {
+        this.user = user;
+    }
+
+    public String getProduct() {
+        return product;
+    }
+
+    public void setProduct(String product) {
+        this.product = product;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
 }
