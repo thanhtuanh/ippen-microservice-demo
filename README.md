@@ -206,4 +206,4 @@ Siehe auch `.github/workflows/ci.yml` für automatisiertes CI/CD.
 ---
 
 **Stand:** 2025-06  
-(c) user.ID Plattform Demo | [thanhtuanh](https://github.com/thanhtuanh) 
+(c) user.ID Plattform Demo | [thanhtuanh](https://github.com/thanhtuanh)
