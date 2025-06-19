@@ -1,0 +1,53 @@
+# Maven
+target/
+!.mvn/wrapper/maven-wrapper.jar
+
+# IntelliJ IDEA
+.idea/
+*.iml
+
+# Eclipse
+.project
+.classpath
+.settings/
+bin/
+
+# VS Code
+.vscode/
+
+# OS junk
+.DS_Store
+Thumbs.db
+
+# Logs
+logs/
+*.log
+
+# Build
+build/
+out/
+
+# Docker
+**/mysql-data/
+*.pid
+
+# Kubernetes
+*.yaml~
+
+# AWS
+.aws/
+.env
+*.pem
+
+# Node/npm (if present)
+node_modules/
+
+# Java
+*.class
+
+# Sensitive files
+*.env
+*secret*.json
+
+# Keycloak import/export temp files
+keycloak/data/

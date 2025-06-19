@@ -1,0 +1,39 @@
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+spec:
+  replicas: 2 # Zwei Instanzen für Ausfallsicherheit
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: <your-docker-repo>/user-service:latest
+          ports:
+            - containerPort: 8080
+          env: # Datenbankverbindung (am besten mit Secrets ersetzen)
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:mysql://<aws-rds-endpoint>:3306/users
+            - name: SPRING_DATASOURCE_USERNAME
+              value: <db-user>
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: <db-password>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+spec:
+  type: ClusterIP
+  selector:
+    app: user-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
