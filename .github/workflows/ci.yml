@@ -60,8 +60,8 @@ jobs:
 
       - name: 🔎 Install kubeval
         run: |
-          curl -sSL -o kubeval.tar.gz https://github.com/instrumenta/kubeval/releases/download/0.16.1/kubeval-linux-amd64.tar.gz
-          tar -xzf kubeval.tar.gz
+          curl -sSL -o kubeval https://github.com/instrumenta/kubeval/releases/download/0.16.1/kubeval-linux-amd64
+          chmod +x kubeval
           sudo mv kubeval /usr/local/bin/
 
       - name: ⚙️ Validate all K8s manifests
