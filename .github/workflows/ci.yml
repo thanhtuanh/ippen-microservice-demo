@@ -1,4 +1,4 @@
-name: Java CI with Maven & Docker
+name: Java CI with Maven & Docker & K8s manifests
 
 on:
   push:
@@ -50,3 +50,26 @@ jobs:
         file: ./${{ matrix.service }}/Dockerfile
         push: true
         tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.service }}:latest
+
+  k8s-manifests-lint:
+    name: "Lint Kubernetes YAML"
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔎 Install kubeval
+        run: |
+          curl -sSL -o kubeval.tar.gz https://github.com/instrumenta/kubeval/releases/download/0.16.1/kubeval-linux-amd64.tar.gz
+          tar -xzf kubeval.tar.gz
+          sudo mv kubeval /usr/local/bin/
+
+      - name: ⚙️ Validate all K8s manifests
+        run: |
+          find ./deploy/k8s/ -type f -name '*.yaml' -exec kubeval {} \;
+
+      - name: 📄 Upload validated manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: k8s-manifests
+          path: deploy/k8s/

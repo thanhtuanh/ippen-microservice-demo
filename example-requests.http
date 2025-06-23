@@ -7,6 +7,14 @@ Content-Type: application/json
   "email": "alice@example.com"
 }
 
+### Benutzer anlegen (user-service)
+POST http://localhost:8081/users
+Content-Type: application/json
+
+{
+  "username": "testuser",
+  "email": "testuser@example.com"
+}
 ### Alle Benutzer anzeigen (user-service)
 GET http://localhost:8081/users
 
@@ -22,16 +30,17 @@ grant_type=password
 ### Token für alice mit client_secret
 POST http://localhost:8080/realms/myrealm/protocol/openid-connect/token
 Content-Type: application/x-www-form-urlencoded
-grant_type=password
-&client_id=order-service
-&username=alice
-&password=alicepass
+
+grant_type=password&
+client_id=order-service&
+username=alice&
+password=alicepass
+
 
 
 ### Bestellung anlegen (order-service, JWT benötigt)
 POST http://localhost:8082/orders
-Authorization: Bearer eyJhbGciOiJSUzI1NiIsInR5cCIgOiAiSldUIiwia2lkIiA6ICJXSG84OGJ6emFNSlNZaTNoR19VTHAycnQxbGd5bjkzczA3Y01SZV9jSUlRIn0.eyJleHAiOjE3NTAzMzE5MTUsImlhdCI6MTc1MDMzMTYxNSwianRpIjoiYTRmNTMzYTQtY2I1Yy00MDM2LTg4YjktODVjMzExYTdiYzlkIiwiaXNzIjoiaHR0cDovL2xvY2FsaG9zdDo4MDgwL3JlYWxtcy9teXJlYWxtIiwiYXVkIjoiYWNjb3VudCIsInN1YiI6IjZjYjQ0YmMyLTU3YmEtNGVjZS1iNDdlLWNhNzhjMzg5MzcxZSIsInR5cCI6IkJlYXJlciIsImF6cCI6Im9yZGVyLXNlcnZpY2UiLCJzZXNzaW9uX3N0YXRlIjoiNWQzYzUzNGUtYjkxOS00NTY0LThlNjYtODc1MDFhNWY5ODBhIiwiYWNyIjoiMSIsInJlYWxtX2FjY2VzcyI6eyJyb2xlcyI6WyJkZWZhdWx0LXJvbGVzLW15cmVhbG0iLCJvZmZsaW5lX2FjY2VzcyIsInVtYV9hdXRob3JpemF0aW9uIl19LCJyZXNvdXJjZV9hY2Nlc3MiOnsiYWNjb3VudCI6eyJyb2xlcyI6WyJtYW5hZ2UtYWNjb3VudCIsIm1hbmFnZS1hY2NvdW50LWxpbmtzIiwidmlldy1wcm9maWxlIl19fSwic2NvcGUiOiJwcm9maWxlIGVtYWlsIiwic2lkIjoiNWQzYzUzNGUtYjkxOS00NTY0LThlNjYtODc1MDFhNWY5ODBhIiwiZW1haWxfdmVyaWZpZWQiOnRydWUsIm5hbWUiOiJ0ZXN0IHVzZXIiLCJwcmVmZXJyZWRfdXNlcm5hbWUiOiJ0ZXN0dXNlciIsImdpdmVuX25hbWUiOiJ0ZXN0IiwiZmFtaWx5X25hbWUiOiJ1c2VyIiwiZW1haWwiOiJ0ZXN0QGV4YW1wbGUuY29tIn0.mfysCgfiiAo41IDuwo8NGpNhNHML1DoipUfsvfAeYhDxQ3ma59wuojuZxWTAiLz6NIrvfuVtX2ON8Zvq1nNXoFdjq9yHT-UxDCH1QG6gGP68785xuE852xrD4W6UE9sosFkYL3QV1otrbLnbvYcHiHldGT8UviPzzlEWDENaCxQIaqrU3zMTOPnWC08q32y7wgNS42Il3VDojh77eCoHbpZSgO9eXUBHdegiZrLgaj3oinCHlMwBaJ546lGdQkDt7UtpmP_EtLXyEJf9AqmgLLdWm5sseykWG3Aui_zKlFWsnvwZn-N2hAKj4jKc9bz77UTY_6ItBUZujlO1l6er_w
-Content-Type: application/json
+Authorization: Bearer <TOKEN>
 
 {
   "product": "Tisch"
