@@ -5,6 +5,27 @@ Es entstand als technisches Showcase für die Position „Senior Java Backend En
 
 ---
 
+## Inhalt
+
+- [Bezug zu Ippen Digital & USER.ID](#🎯-bezug-zu-ippen-digital--userid)
+- [Architekturüberblick](#⚙️-architekturüberblick)
+- [Services & Ports](#📦-services--ports)
+- [Schnellstart mit Docker Compose](#🚀-schnellstart-mit-docker-compose)
+- [API-Dokumentation](#📖-api-dokumentation)
+- [Kubernetes Deployment](#☁️-kubernetes-deployment)
+- [Authentifizierung (Keycloak & JWT)](#🔐-authentifizierung-keycloak--jwt)
+- [Beispiel-API-Aufrufe](#🌐-beispiel-api-aufrufe)
+- [Technologien](#🛠️-technologien)
+- [Build & CI/CD](#🔁-build--cicd)
+- [Unit- & Integrationstests](#✅-unit--integrationstests)
+- [Beispiel: API-Test mit curl](#📸-beispiel-api-test-mit-curl)
+- [Monitoring & Logging](#📊-monitoring--logging)
+- [Hinweise & Best Practices](#📝-hinweise--best-practices)
+- [Weiterführende Themen & Empfehlungen](#🚀-weiterführende-themen--empfehlungen)
+- [Autor](#👤-autor)
+
+---
+
 ## 🎯 Bezug zu Ippen Digital & USER.ID
 
 - **Microservice-Prinzipien**: Klare Trennung, RESTful APIs, Cloud-native Design
@@ -148,7 +169,7 @@ Ein erfolgreicher API-Call auf den User-Service sieht so aus:
 
 [➡️ PDF-Screenshot ansehen](./docs/curl-users.pdf)
 
-![curl-users](./docs/curl-users.pdf)
+![curl-users](./docs/curl-users.png)
 
 ---
 
@@ -174,6 +195,54 @@ Weitere Infos: [Spring Boot Actuator Doku](https://docs.spring.io/spring-boot/do
 - Health-Checks via `/actuator/health`
 - Beispiel-DB & Testuser dienen Demo-Zwecken
 - Security: OIDC/JWT, Service-Isolation, Integrationstests mit Security-Kontext
+
+---
+
+## 🚀 Weiterführende Themen & Empfehlungen
+
+Um dieses Demo-Projekt produktionsreif und zukunftssicher zu gestalten, sind folgende Aspekte wichtig:
+
+### Monitoring & Observability
+- **Spring Boot Actuator** ist bereits integriert (Health/Metrics).
+- Für zentrale Überwachung und Auswertung empfiehlt sich:
+  - **ELK Stack** (Elasticsearch, Logstash, Kibana) für zentrale Logsuche & Visualisierung
+  - **Prometheus & Grafana** für Metrik-Scraping, Dashboards und Alerting
+  - **Grafana Loki** als Cloud-native Alternative für Log-Streaming
+
+### Security-Härtung
+- Produktivbetrieb sollte ausschließlich über HTTPS erfolgen.
+- Secrets (Datenbank, Keycloak, etc.) konsequent als Kubernetes-Secrets verwalten.
+- Regelmäßige Security-Scans, Penetration-Tests und Audit-Logs sind empfohlen.
+
+### Automatisierung & DevOps
+- Die bestehende CI/CD-Pipeline kann um automatisches Deployment, Rollbacks und Tagging erweitert werden.
+- Infrastructure as Code (bspw. mit Helm, Terraform) ermöglicht reproduzierbare Setups für verschiedene Umgebungen.
+
+### Skalierbarkeit & Hochverfügbarkeit
+- Kubernetes-Deployments ermöglichen horizontale Skalierung (mehrere Replikas pro Service).
+- Liveness/Readiness-Probes sind für zuverlässige Updates & Verfügbarkeit konfigurierbar.
+- Rolling Updates & Self-Healing durch Kubernetes sind vorbereitet.
+
+### Cloud Readiness
+- Integration von AWS-Diensten (z.B. S3, RDS, Secrets Manager) ist vorbereitet und kann produktiv genutzt werden.
+- Multi-Environment-Setups (Staging, Prod) sind leicht realisierbar.
+
+### Dokumentation & Onboarding
+- Quellcode, API-Doku, Beispiel-Requests und Monitoring-Screenshots sind enthalten.
+- Für Onboarding und Wissensaustausch empfiehlt sich ein dediziertes Developer-Handbuch.
+
+### Teststrategie & Qualitätssicherung
+- Unit-, Integrations- und End-to-End-Tests sind vorhanden und ausbaufähig.
+- Automatisiertes Testdatenmanagement und QA-Prozesse werden empfohlen.
+
+### Nachhaltige Weiterentwicklung
+- Clean Code, Architekturprinzipien und Code-Reviews sichern langfristige Wartbarkeit.
+- Modularisierung ermöglicht einfache Erweiterung um neue Services oder Features.
+
+---
+
+**Hinweis:**  
+Diese Empfehlungen bilden die Basis für einen langfristig erfolgreichen Betrieb und die kontinuierliche Weiterentwicklung – insbesondere im Cloud- und Kubernetes-Umfeld.
 
 ---
 
