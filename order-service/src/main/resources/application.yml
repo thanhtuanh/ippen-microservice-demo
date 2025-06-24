@@ -4,3 +4,15 @@ spring:
       resourceserver:
         jwt:
           issuer-uri: http://keycloak:8080/realms/myrealm # Keycloak-URL
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+          - metrics
+  endpoint:
+    health:
+      show-details: always
