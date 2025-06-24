@@ -161,6 +161,7 @@ Ein erfolgreicher API-Call auf den User-Service sieht so aus:
 [➡️ PDF-Screenshot ansehen](./docs/curl-users.pdf)
 
 ![curl-users](./docs/curl-users.pdf)
+
 ---
 
 ## 📝 Hinweise & Best Practices
