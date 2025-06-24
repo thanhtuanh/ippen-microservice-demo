@@ -1,0 +1,1429 @@
+### ./docker-compose.yaml
+
+
+services:
+  mysql:
+  # MySQL Datenbank für User- und Order-Service. Persistenz über Volume.
+    image: mysql:8.0
+    container_name: mysql
+    environment:
+      MYSQL_ROOT_PASSWORD: rootpw
+      MYSQL_DATABASE: demo
+      MYSQL_USER: demo
+      MYSQL_PASSWORD: demopw
+    ports:
+      - "3306:3306"
+    volumes:
+      - mysql-data:/var/lib/mysql
+    healthcheck:
+      test: ["CMD", "mysqladmin", "ping", "-h", "localhost"]
+      interval: 5s
+      retries: 10
+
+  keycloak:
+  # Keycloak zur Authentifizierung (OIDC/OAuth2), Realm-Import via realm-export.json
+    image: quay.io/keycloak/keycloak:24.0.4
+    container_name: keycloak
+    command: start-dev --import-realm
+    volumes:
+      - ./keycloak/realm-export.json:/opt/keycloak/data/import/realm-export.json
+    environment:
+      KEYCLOAK_ADMIN: admin
+      KEYCLOAK_ADMIN_PASSWORD: admin
+    ports:
+      - "8080:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  user-service:
+  # Spring Boot Microservice für Benutzerverwaltung
+    build:
+      context: user-service
+    image: thanhtuanh/user-service:latest
+    container_name: user-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/demo
+      SPRING_DATASOURCE_USERNAME: demo
+      SPRING_DATASOURCE_PASSWORD: demopw
+    ports:
+      - "8081:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+
+  order-service:
+   # Spring Boot Microservice für Bestellungen, gesichert über JWT/OIDC
+    build:
+      context: order-service
+    image: thanhtuanh/order-service:latest
+    container_name: order-service
+    environment:
+      SPRING_DATASOURCE_URL: jdbc:mysql://mysql:3306/demo
+      SPRING_DATASOURCE_USERNAME: demo
+      SPRING_DATASOURCE_PASSWORD: demopw
+      SPRING_SECURITY_OAUTH2_RESOURCESERVER_JWT_ISSUER_URI: http://keycloak:8080/realms/myrealm
+    ports:
+      - "8082:8080"
+    depends_on:
+      mysql:
+        condition: service_healthy
+      keycloak:
+        condition: service_started
+
+volumes:
+  mysql-data:
+
+### ./deploy/k8s/keycloak-deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: keycloak
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: keycloak
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: keycloak
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: keycloak
+  template:
+    metadata:
+      labels:
+        app: keycloak
+    spec:
+      containers:
+        - name: keycloak
+          image: quay.io/keycloak/keycloak:24.0.4
+          args: ["start-dev"]
+          env:
+            - name: KEYCLOAK_ADMIN
+              value: admin
+            - name: KEYCLOAK_ADMIN_PASSWORD
+              value: admin
+          ports:
+            - containerPort: 8080
+
+### ./deploy/k8s/mysql-deployment.yaml
+apiVersion: v1
+kind: PersistentVolumeClaim
+metadata:
+  name: mysql-pvc
+spec:
+  accessModes:
+    - ReadWriteOnce
+  resources:
+    requests:
+      storage: 1Gi
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: mysql
+spec:
+  ports:
+    - port: 3306
+  selector:
+    app: mysql
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: mysql
+spec:
+  selector:
+    matchLabels:
+      app: mysql
+  strategy:
+    type: Recreate
+  template:
+    metadata:
+      labels:
+        app: mysql
+    spec:
+      containers:
+        - image: mysql:8.0
+          name: mysql
+          env:
+            - name: MYSQL_ROOT_PASSWORD
+              value: rootpw
+            - name: MYSQL_DATABASE
+              value: demo
+            - name: MYSQL_USER
+              value: demo
+            - name: MYSQL_PASSWORD
+              value: demopw
+          ports:
+            - containerPort: 3306
+              name: mysql
+          volumeMounts:
+            - name: mysql-persistent-storage
+              mountPath: /var/lib/mysql
+      volumes:
+        - name: mysql-persistent-storage
+          persistentVolumeClaim:
+            claimName: mysql-pvc
+
+### ./deploy/k8s/order-service-deployment.yaml
+apiVersion: v1
+kind: Service
+metadata:
+  name: order-service
+spec:
+  ports:
+    - port: 8080
+      targetPort: 8080
+  selector:
+    app: order-service
+---
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: order-service
+spec:
+  replicas: 1
+  selector:
+    matchLabels:
+      app: order-service
+  template:
+    metadata:
+      labels:
+        app: order-service
+    spec:
+      containers:
+        - name: order-service
+          image: thanhtuanh/order-service:latest # Passe ggf. auf deinen DockerHub-Namen an!
+          ports:
+            - containerPort: 8080
+          env:
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:mysql://mysql:3306/demo
+            - name: SPRING_DATASOURCE_USERNAME
+              value: demo
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: demopw
+
+### ./deploy/k8s/user-service-deployment.yaml
+apiVersion: apps/v1
+kind: Deployment
+metadata:
+  name: user-service
+spec:
+  replicas: 2 # Zwei Instanzen für Ausfallsicherheit
+  selector:
+    matchLabels:
+      app: user-service
+  template:
+    metadata:
+      labels:
+        app: user-service
+    spec:
+      containers:
+        - name: user-service
+          image: <your-docker-repo>/user-service:latest
+          ports:
+            - containerPort: 8080
+          env: # Datenbankverbindung (am besten mit Secrets ersetzen)
+            - name: SPRING_DATASOURCE_URL
+              value: jdbc:mysql://<aws-rds-endpoint>:3306/users
+            - name: SPRING_DATASOURCE_USERNAME
+              value: <db-user>
+            - name: SPRING_DATASOURCE_PASSWORD
+              value: <db-password>
+---
+apiVersion: v1
+kind: Service
+metadata:
+  name: user-service
+spec:
+  type: ClusterIP
+  selector:
+    app: user-service
+  ports:
+    - protocol: TCP
+      port: 80
+      targetPort: 8080
+
+### ./README.md
+# 🧩 Ippen Microservice Demo
+
+Dieses Projekt demonstriert eine skalierbare Microservice-Architektur mit **Spring Boot**, **Keycloak**, **Docker**, **Kubernetes** und optionaler AWS S3-Anbindung.  
+Es entstand als technisches Showcase für die Position „Senior Java Backend Engineer“ bei **Ippen Digital** – mit Fokus auf Authentifizierung, Service-Security und Cloud-Readiness.
+
+---
+
+## Inhalt
+
+- [Bezug zu Ippen Digital & USER.ID](#🎯-bezug-zu-ippen-digital--userid)
+- [Architekturüberblick](#⚙️-architekturüberblick)
+- [Services & Ports](#📦-services--ports)
+- [Schnellstart mit Docker Compose](#🚀-schnellstart-mit-docker-compose)
+- [API-Dokumentation](#📖-api-dokumentation)
+- [Kubernetes Deployment](#☁️-kubernetes-deployment)
+- [Authentifizierung (Keycloak & JWT)](#🔐-authentifizierung-keycloak--jwt)
+- [Beispiel-API-Aufrufe](#🌐-beispiel-api-aufrufe)
+- [Technologien](#🛠️-technologien)
+- [Build & CI/CD](#🔁-build--cicd)
+- [Unit- & Integrationstests](#✅-unit--integrationstests)
+- [Beispiel: API-Test mit curl](#📸-beispiel-api-test-mit-curl)
+- [Monitoring & Logging](#📊-monitoring--logging)
+- [Hinweise & Best Practices](#📝-hinweise--best-practices)
+- [Weiterführende Themen & Empfehlungen](#🚀-weiterführende-themen--empfehlungen)
+- [Autor](#👤-autor)
+
+---
+
+## 🎯 Bezug zu Ippen Digital & USER.ID
+
+- **Microservice-Prinzipien**: Klare Trennung, RESTful APIs, Cloud-native Design
+- **Moderne Authentifizierung**: OIDC & JWT (Keycloak), OAuth2 Resource Server
+- **Kubernetes & AWS**: K8s-Deployments, vorbereitet für RDS & S3
+- **Service-Security**: Geschützte Endpunkte, Unit- & Integrationstests, DevOps
+- **Automatisierte API-Doku**: OpenAPI/Swagger für alle Services
+
+---
+
+## ⚙️ Architekturüberblick
+
+![Architekturübersicht](./docs/architecture.png)
+
+*Keycloak übernimmt die zentrale Authentifizierung, Microservices sind per JWT abgesichert, Datenhaltung via MySQL.*
+
+---
+
+## 📦 Services & Ports
+
+| Service         | Port | Zweck                                  |
+|-----------------|------|----------------------------------------|
+| `keycloak`      | 8080 | Authentifizierung (OIDC, OAuth2)       |
+| `user-service`  | 8081 | Benutzerverwaltung                     |
+| `order-service` | 8082 | Bestellungen (OAuth2/JWT-gesichert)    |
+| `mysql`         | 3306 | Zentrale Datenbank                     |
+
+---
+
+## 🚀 Schnellstart mit Docker Compose
+
+```bash
+docker compose up --build
+```
+
+*Danach erreichbar:*
+
+- [Keycloak Admin](http://localhost:8080) (`admin`/`admin`)
+- [User-Service](http://localhost:8081)
+- [Order-Service](http://localhost:8082)
+
+Testnutzer: `alice` / `alicepass` (wird automatisch importiert)
+
+---
+
+## 📖 API-Dokumentation
+
+- [User-Service Swagger UI](http://localhost:8081/swagger-ui.html)
+- [Order-Service Swagger UI](http://localhost:8082/swagger-ui.html)
+
+---
+
+## ☁️ Kubernetes Deployment
+
+```bash
+kubectl apply -f deploy/k8s/
+```
+- Deployments & Services für alle Komponenten
+- Persistente Volumes via PVC
+- Skalierbarkeit und Konfigurierbarkeit
+- Secrets & Konfigs per K8s-Mechanismen
+
+---
+
+## 🔐 Authentifizierung (Keycloak & JWT)
+
+- Realm: `myrealm`
+- Nur mit gültigem JWT Zugriff auf geschützte Endpunkte (z.B. `/orders`)
+- Konfiguration via `spring-security-oauth2-resource-server`
+
+---
+
+## 🌐 Beispiel-API-Aufrufe
+
+```http
+# Token holen
+curl -X POST "http://localhost:8080/realms/myrealm/protocol/openid-connect/token" \
+  -d "grant_type=password" -d "client_id=order-service" \
+  -d "username=alice" -d "password=alicepass"
+
+# Bestellungen abrufen (JWT erforderlich)
+curl -H "Authorization: Bearer <JWT>" http://localhost:8082/orders
+
+# Benutzer anzeigen
+curl http://localhost:8081/users
+```
+👉 Siehe `example-requests.http` für weitere Beispiele (nutztbar mit IntelliJ HTTP Client oder VS Code).
+
+---
+
+## 🛠️ Technologien
+
+- Java 17, Spring Boot 3
+- Spring Security & OAuth2 Resource Server
+- Keycloak 24
+- Docker & Docker Compose
+- Kubernetes (Minikube/EKS-ready)
+- AWS SDK v2 (S3-Integration vorbereitet)
+- GitHub Actions (CI/CD)
+- JUnit, Mockito, Spring Security Test
+- OpenAPI/Swagger
+
+---
+
+## 🔁 Build & CI/CD
+
+```bash
+# Build User-Service
+docker build -t thanhtuanh/user-service:latest ./user-service
+
+# Build Order-Service
+docker build -t thanhtuanh/order-service:latest ./order-service
+```
+
+**CI/CD-Workflow (.github/workflows/ci.yml):**
+- Build & Unit-Tests (`mvn verify`)
+- Test-Reports (Surefire) als Artefakte
+- Push Images zu Docker Hub
+- Linting & Manifest-Validierung
+- Automatischer Test bei jedem Push/PR auf `main`
+
+---
+
+## ✅ Unit- & Integrationstests
+
+- `OrderControllerTest`: GET `/orders` mit JWT
+- `UserControllerTest`: GET `/users`, ohne Auth
+- JUnit, MockMvc, @WebMvcTest
+- Test-Reports per GitHub Actions
+
+```bash
+cd order-service && mvn clean verify
+cd user-service && mvn clean verify
+```
+
+---
+
+## 📸 Beispiel: API-Test mit curl
+
+Ein erfolgreicher API-Call auf den User-Service sieht so aus:
+
+[➡️ PDF-Screenshot ansehen](./docs/curl-users.pdf)
+
+![curl-users](./docs/curl-users.png)
+
+---
+
+## 📊 Monitoring & Logging
+
+Dieses Projekt nutzt [Spring Boot Actuator](https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html) für Health- und Metrik-Endpunkte:
+
+- Health-Check: [`/actuator/health`](http://localhost:8081/actuator/health)
+- Metriken: [`/actuator/metrics`](http://localhost:8081/actuator/metrics)
+
+**Für produktive Umgebungen empfohlen:**
+- **ELK Stack:** Zentrales Log-Management & Visualisierung mit [Kibana](https://www.elastic.co/kibana/)
+- **Prometheus & Grafana:** Metriken-Scraping, Dashboards & Alerting
+- **(Optional)** [Grafana Loki](https://grafana.com/oss/loki/): Cloud-native Logging
+
+Weitere Infos: [Spring Boot Actuator Doku](https://docs.spring.io/spring-boot/docs/current/reference/html/actuator.html)
+
+---
+
+## 📝 Hinweise & Best Practices
+
+- Zugangsdaten & Secrets als K8s-Secrets verwalten (siehe YAML-Kommentare)
+- Health-Checks via `/actuator/health`
+- Beispiel-DB & Testuser dienen Demo-Zwecken
+- Security: OIDC/JWT, Service-Isolation, Integrationstests mit Security-Kontext
+
+---
+
+## 🚀 Weiterführende Themen & Empfehlungen
+
+Um dieses Demo-Projekt produktionsreif und zukunftssicher zu gestalten, sind folgende Aspekte wichtig:
+
+### Monitoring & Observability
+- **Spring Boot Actuator** ist bereits integriert (Health/Metrics).
+- Für zentrale Überwachung und Auswertung empfiehlt sich:
+  - **ELK Stack** (Elasticsearch, Logstash, Kibana) für zentrale Logsuche & Visualisierung
+  - **Prometheus & Grafana** für Metrik-Scraping, Dashboards und Alerting
+  - **Grafana Loki** als Cloud-native Alternative für Log-Streaming
+
+### Security-Härtung
+- Produktivbetrieb sollte ausschließlich über HTTPS erfolgen.
+- Secrets (Datenbank, Keycloak, etc.) konsequent als Kubernetes-Secrets verwalten.
+- Regelmäßige Security-Scans, Penetration-Tests und Audit-Logs sind empfohlen.
+
+### Automatisierung & DevOps
+- Die bestehende CI/CD-Pipeline kann um automatisches Deployment, Rollbacks und Tagging erweitert werden.
+- Infrastructure as Code (bspw. mit Helm, Terraform) ermöglicht reproduzierbare Setups für verschiedene Umgebungen.
+
+### Skalierbarkeit & Hochverfügbarkeit
+- Kubernetes-Deployments ermöglichen horizontale Skalierung (mehrere Replikas pro Service).
+- Liveness/Readiness-Probes sind für zuverlässige Updates & Verfügbarkeit konfigurierbar.
+- Rolling Updates & Self-Healing durch Kubernetes sind vorbereitet.
+
+### Cloud Readiness
+- Integration von AWS-Diensten (z.B. S3, RDS, Secrets Manager) ist vorbereitet und kann produktiv genutzt werden.
+- Multi-Environment-Setups (Staging, Prod) sind leicht realisierbar.
+
+### Dokumentation & Onboarding
+- Quellcode, API-Doku, Beispiel-Requests und Monitoring-Screenshots sind enthalten.
+- Für Onboarding und Wissensaustausch empfiehlt sich ein dediziertes Developer-Handbuch.
+
+### Teststrategie & Qualitätssicherung
+- Unit-, Integrations- und End-to-End-Tests sind vorhanden und ausbaufähig.
+- Automatisiertes Testdatenmanagement und QA-Prozesse werden empfohlen.
+
+### Nachhaltige Weiterentwicklung
+- Clean Code, Architekturprinzipien und Code-Reviews sichern langfristige Wartbarkeit.
+- Modularisierung ermöglicht einfache Erweiterung um neue Services oder Features.
+
+---
+
+**Hinweis:**  
+Diese Empfehlungen bilden die Basis für einen langfristig erfolgreichen Betrieb und die kontinuierliche Weiterentwicklung – insbesondere im Cloud- und Kubernetes-Umfeld.
+
+---
+
+## 👤 Autor
+
+[🔗 Duc Thanh Nguyen – GitHub Portfolio](https://github.com/thanhtuanh/bewerbung)
+
+---
+
+**Stand:** Juni 2025
+
+### ./order-service/pom.xml
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+    <groupId>com.example</groupId>
+    <artifactId>order-service</artifactId>
+    <version>1.0.0</version>
+    <properties>
+        <java.version>17</java.version>
+        <spring-boot.version>3.3.0</spring-boot.version>
+        <aws.sdk.version>2.25.41</aws.sdk.version>
+    </properties>
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+    <dependencies>
+        <!-- Spring Boot Starter Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+        <!-- Spring Boot Starter Data JPA -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+        <!-- MySQL Connector -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+        <!-- Spring Security -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-security</artifactId>
+        </dependency>
+        <!-- Spring Security OAuth2 Resource Server -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-oauth2-resource-server</artifactId>
+        </dependency>
+        <!-- AWS SDK v2 for S3 -->
+        <dependency>
+            <groupId>software.amazon.awssdk</groupId>
+            <artifactId>s3</artifactId>
+            <version>${aws.sdk.version}</version>
+        </dependency>
+        <!-- Spring Boot Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.mockito</groupId>
+            <artifactId>mockito-core</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- OpenAPI/Swagger UI -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.5.0</version>
+        </dependency>
+        <!-- Spring Boot Actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+
+    </dependencies>
+    <build>
+        <plugins>
+            <!-- Maven Compiler Plugin -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <release>17</release>
+                </configuration>
+            </plugin>
+            <!-- Spring Boot Maven Plugin -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+
+### ./order-service/.mvn/wrapper/MavenWrapperDownloader.java
+/*
+ * Copyright 2007-present the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import java.net.*;
+import java.io.*;
+import java.nio.channels.*;
+import java.util.Properties;
+
+public class MavenWrapperDownloader {
+
+    private static final String WRAPPER_VERSION = "0.5.6";
+    /**
+     * Default URL to download the maven-wrapper.jar from, if no 'downloadUrl' is provided.
+     */
+    private static final String DEFAULT_DOWNLOAD_URL = "https://repo.maven.apache.org/maven2/io/takari/maven-wrapper/"
+        + WRAPPER_VERSION + "/maven-wrapper-" + WRAPPER_VERSION + ".jar";
+
+    /**
+     * Path to the maven-wrapper.properties file, which might contain a downloadUrl property to
+     * use instead of the default one.
+     */
+    private static final String MAVEN_WRAPPER_PROPERTIES_PATH =
+            ".mvn/wrapper/maven-wrapper.properties";
+
+    /**
+     * Path where the maven-wrapper.jar will be saved to.
+     */
+    private static final String MAVEN_WRAPPER_JAR_PATH =
+            ".mvn/wrapper/maven-wrapper.jar";
+
+    /**
+     * Name of the property which should be used to override the default download url for the wrapper.
+     */
+    private static final String PROPERTY_NAME_WRAPPER_URL = "wrapperUrl";
+
+    public static void main(String args[]) {
+        System.out.println("- Downloader started");
+        File baseDirectory = new File(args[0]);
+        System.out.println("- Using base directory: " + baseDirectory.getAbsolutePath());
+
+        // If the maven-wrapper.properties exists, read it and check if it contains a custom
+        // wrapperUrl parameter.
+        File mavenWrapperPropertyFile = new File(baseDirectory, MAVEN_WRAPPER_PROPERTIES_PATH);
+        String url = DEFAULT_DOWNLOAD_URL;
+        if(mavenWrapperPropertyFile.exists()) {
+            FileInputStream mavenWrapperPropertyFileInputStream = null;
+            try {
+                mavenWrapperPropertyFileInputStream = new FileInputStream(mavenWrapperPropertyFile);
+                Properties mavenWrapperProperties = new Properties();
+                mavenWrapperProperties.load(mavenWrapperPropertyFileInputStream);
+                url = mavenWrapperProperties.getProperty(PROPERTY_NAME_WRAPPER_URL, url);
+            } catch (IOException e) {
+                System.out.println("- ERROR loading '" + MAVEN_WRAPPER_PROPERTIES_PATH + "'");
+            } finally {
+                try {
+                    if(mavenWrapperPropertyFileInputStream != null) {
+                        mavenWrapperPropertyFileInputStream.close();
+                    }
+                } catch (IOException e) {
+                    // Ignore ...
+                }
+            }
+        }
+        System.out.println("- Downloading from: " + url);
+
+        File outputFile = new File(baseDirectory.getAbsolutePath(), MAVEN_WRAPPER_JAR_PATH);
+        if(!outputFile.getParentFile().exists()) {
+            if(!outputFile.getParentFile().mkdirs()) {
+                System.out.println(
+                        "- ERROR creating output directory '" + outputFile.getParentFile().getAbsolutePath() + "'");
+            }
+        }
+        System.out.println("- Downloading to: " + outputFile.getAbsolutePath());
+        try {
+            downloadFileFromURL(url, outputFile);
+            System.out.println("Done");
+            System.exit(0);
+        } catch (Throwable e) {
+            System.out.println("- Error downloading");
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
+
+    private static void downloadFileFromURL(String urlString, File destination) throws Exception {
+        if (System.getenv("MVNW_USERNAME") != null && System.getenv("MVNW_PASSWORD") != null) {
+            String username = System.getenv("MVNW_USERNAME");
+            char[] password = System.getenv("MVNW_PASSWORD").toCharArray();
+            Authenticator.setDefault(new Authenticator() {
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+                    return new PasswordAuthentication(username, password);
+                }
+            });
+        }
+        URL website = new URL(urlString);
+        ReadableByteChannel rbc;
+        rbc = Channels.newChannel(website.openStream());
+        FileOutputStream fos = new FileOutputStream(destination);
+        fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
+        fos.close();
+        rbc.close();
+    }
+
+}
+
+
+### ./order-service/src/test/java/com/example/orderservice/controller/OrderControllerTest.java
+package com.example.orderservice.controller;
+
+import com.example.orderservice.model.Order;
+import com.example.orderservice.repository.OrderRepository;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
+
+import static org.mockito.Mockito.when;
+import static org.springframework.security.test.web.servlet.request.SecurityMockMvcRequestPostProcessors.jwt;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.status;
+
+@WebMvcTest(OrderController.class)
+class OrderControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private OrderRepository orderRepository;
+
+    @Test
+    void testGetMyOrders_returnsOrders() throws Exception {
+        // Vorbereitung: Testdaten
+        Order mockOrder = new Order(); // createdAt wird im Konstruktor automatisch gesetzt
+        mockOrder.setUser("alice");
+        mockOrder.setProduct("Testprodukt");
+
+        when(orderRepository.findByUser("alice")).thenReturn(List.of(mockOrder));
+
+        // Test: GET /orders mit JWT-Simulation
+        mockMvc.perform(get("/orders")
+                .with(jwt().jwt(jwt -> jwt.claim("preferred_username", "alice"))))
+                .andExpect(status().isOk());
+    }
+}
+
+
+### ./order-service/src/main/resources/application.yml
+spring:
+  security:
+    oauth2:
+      resourceserver:
+        jwt:
+          issuer-uri: http://keycloak:8080/realms/myrealm # Keycloak-URL
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include:
+          - health
+          - info
+          - metrics
+  endpoint:
+    health:
+      show-details: always
+
+### ./order-service/src/main/java/com/example/orderservice/repository/OrderRepository.java
+// Spring Data Repository für Bestellungen
+package com.example.orderservice.repository;
+import com.example.orderservice.model.Order;
+import org.springframework.data.jpa.repository.JpaRepository;
+import java.util.List;
+public interface OrderRepository extends JpaRepository<Order, Long> {
+    List<Order> findByUser(String user);
+}
+
+
+### ./order-service/src/main/java/com/example/orderservice/config/OpenApiConfig.java
+package com.example.orderservice.config;
+
+import io.swagger.v3.oas.models.info.Info;
+import io.swagger.v3.oas.models.OpenAPI;
+import org.springframework.context.annotation.Bean;
+import org.springframework.context.annotation.Configuration;
+
+@Configuration
+public class OpenApiConfig {
+    @Bean
+    public OpenAPI customOpenAPI() {
+        return new OpenAPI()
+            .info(new Info()
+                .title("Order Service API")
+                .version("1.0.0")
+                .description("REST API für Bestellungen (Demo für Ippen Digital)"));
+    }
+}
+
+### ./order-service/src/main/java/com/example/orderservice/controller/OrderController.java
+// REST-Controller für Bestellungen, geschützt via OAuth2 (JWT)
+package com.example.orderservice.controller;
+import com.example.orderservice.model.Order;
+import com.example.orderservice.repository.OrderRepository;
+import org.springframework.security.core.annotation.AuthenticationPrincipal;
+import org.springframework.security.oauth2.jwt.Jwt;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+
+// REST-Controller für Bestellungen, gesichert über JWT/OIDC. Liefert Bestellungen des authentifizierten Users.
+@RestController
+@RequestMapping("/orders")
+public class OrderController {
+    private final OrderRepository repo;
+    public OrderController(OrderRepository repo) { this.repo = repo; }
+    @GetMapping
+    public List<Order> getMyOrders(@AuthenticationPrincipal Jwt principal) {
+        String username = principal.getClaimAsString("preferred_username");
+        return repo.findByUser(username);
+    }
+    @PostMapping
+    public Order createOrder(@AuthenticationPrincipal Jwt principal, @RequestBody Order order) {
+        order.setUser(principal.getClaimAsString("preferred_username"));
+        return repo.save(order);
+    }
+}
+
+
+### ./order-service/src/main/java/com/example/orderservice/OrderServiceApplication.java
+// Hauptklasse des Order-Service
+package com.example.orderservice;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+@SpringBootApplication
+public class OrderServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(OrderServiceApplication.class, args);
+    }
+}
+
+
+### ./order-service/src/main/java/com/example/orderservice/model/Order.java
+package com.example.orderservice.model;
+
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+import jakarta.persistence.GeneratedValue;
+import jakarta.persistence.GenerationType;
+import java.time.LocalDateTime;
+
+@Entity
+public class Order {
+    @Id
+    @GeneratedValue(strategy = GenerationType.IDENTITY)
+    private Long id;
+    private String user;
+    private String product;
+    private LocalDateTime createdAt;
+
+    public Order() {
+        this.createdAt = LocalDateTime.now();
+    }
+
+    // Getter und Setter
+    public Long getId() {
+        return id;
+    }
+
+    public String getUser() {
+        return user;
+    }
+
+    public void setUser(String user) {
+        this.user = user;
+    }
+
+    public String getProduct() {
+        return product;
+    }
+
+    public void setProduct(String product) {
+        this.product = product;
+    }
+
+    public LocalDateTime getCreatedAt() {
+        return createdAt;
+    }
+
+    public void setCreatedAt(LocalDateTime createdAt) {
+        this.createdAt = createdAt;
+    }
+
+}
+
+### ./order-service/src/main/java/com/example/orderservice/service/S3Service.java
+// Service-Klasse für Uploads nach AWS S3
+package com.example.orderservice.service;
+import org.springframework.stereotype.Service;
+import software.amazon.awssdk.auth.credentials.DefaultCredentialsProvider;
+import software.amazon.awssdk.regions.Region;
+import software.amazon.awssdk.services.s3.S3Client;
+import software.amazon.awssdk.services.s3.model.PutObjectRequest;
+import java.io.InputStream;
+
+// Service für S3-Uploads (AWS), vorbereitet für Rechnungs-Upload.
+@Service
+public class S3Service {
+    private final S3Client s3 = S3Client.builder()
+            .region(Region.EU_CENTRAL_1)
+            .credentialsProvider(DefaultCredentialsProvider.create())
+            .build();
+    public void uploadInvoice(String bucket, String key, InputStream file) throws Exception {
+        s3.putObject(PutObjectRequest.builder()
+                        .bucket(bucket)
+                        .key(key)
+                        .build(),
+                software.amazon.awssdk.core.sync.RequestBody.fromInputStream(file, file.available()));
+    }
+}
+
+
+### ./.github/workflows/ci.yml
+name: Java CI with Maven & Docker & K8s manifests
+
+on:
+  push:
+    branches:
+      - main
+  pull_request:
+    branches:
+      - main
+
+jobs:
+  build-test-and-dockerize:
+    runs-on: ubuntu-latest
+
+    strategy:
+      matrix:
+        service: [user-service, order-service]
+
+    steps:
+    - name: 📥 Checkout code
+      uses: actions/checkout@v4
+
+    - name: ☕ Set up JDK 21
+      uses: actions/setup-java@v4
+      with:
+        java-version: '21'
+        distribution: 'temurin'
+
+    - name: 🔨 Build & Test with Maven
+      run: mvn -B -f ${{ matrix.service }}/pom.xml clean verify
+
+    - name: 📄 Upload JUnit Test Report
+      if: always() # auch bei Testfehlern speichern
+      uses: actions/upload-artifact@v4
+      with:
+        name: junit-report-${{ matrix.service }}
+        path: ${{ matrix.service }}/target/surefire-reports/
+        retention-days: 7
+
+    - name: 🔐 Log in to Docker Hub
+      uses: docker/login-action@v3
+      with:
+        username: ${{ secrets.DOCKERHUB_USERNAME }}
+        password: ${{ secrets.DOCKERHUB_TOKEN }}
+
+    - name: 🐳 Build and push Docker image
+      uses: docker/build-push-action@v5
+      with:
+        context: ./${{ matrix.service }}
+        file: ./${{ matrix.service }}/Dockerfile
+        push: true
+        tags: ${{ secrets.DOCKERHUB_USERNAME }}/${{ matrix.service }}:latest
+
+  k8s-manifests-lint:
+    name: "Lint Kubernetes YAML"
+    runs-on: ubuntu-latest
+    steps:
+      - name: 📥 Checkout code
+        uses: actions/checkout@v4
+
+      - name: 🔎 Install kubeval
+        run: |
+          curl -sSL -o kubeval https://github.com/instrumenta/kubeval/releases/download/0.16.1/kubeval-linux-amd64
+          chmod +x kubeval
+          sudo mv kubeval /usr/local/bin/
+
+      - name: ⚙️ Validate all K8s manifests
+        run: |
+          find ./deploy/k8s/ -type f -name '*.yaml' -exec kubeval {} \;
+
+      - name: 📄 Upload validated manifests
+        uses: actions/upload-artifact@v4
+        with:
+          name: k8s-manifests
+          path: deploy/k8s/
+
+### ./user-service/pom.xml
+<project xmlns="http://maven.apache.org/POM/4.0.0"
+    xmlns:xsi="http://www.w3.org/2001/XMLSchema-instance"
+    xsi:schemaLocation="http://maven.apache.org/POM/4.0.0 http://maven.apache.org/xsd/maven-4.0.0.xsd">
+    <modelVersion>4.0.0</modelVersion>
+
+    <groupId>com.example</groupId>
+    <artifactId>user-service</artifactId>
+    <version>1.0.0</version>
+
+    <properties>
+        <java.version>17</java.version>
+        <spring-boot.version>3.2.7</spring-boot.version>
+    </properties>
+
+    <dependencyManagement>
+        <dependencies>
+            <dependency>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-dependencies</artifactId>
+                <version>${spring-boot.version}</version>
+                <type>pom</type>
+                <scope>import</scope>
+            </dependency>
+        </dependencies>
+    </dependencyManagement>
+
+    <dependencies>
+        <!-- Spring Boot Web -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-web</artifactId>
+        </dependency>
+
+        <!-- Spring Data JPA -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-data-jpa</artifactId>
+        </dependency>
+
+        <!-- MySQL JDBC -->
+        <dependency>
+            <groupId>com.mysql</groupId>
+            <artifactId>mysql-connector-j</artifactId>
+            <scope>runtime</scope>
+        </dependency>
+
+        <!-- ✅ Spring Boot Test -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+
+        <!-- ✅ Spring Security Test (für MockMvc & JWT Tests) -->
+        <dependency>
+            <groupId>org.springframework.security</groupId>
+            <artifactId>spring-security-test</artifactId>
+            <scope>test</scope>
+        </dependency>
+        <!-- OpenAPI/Swagger UI -->
+        <dependency>
+            <groupId>org.springdoc</groupId>
+            <artifactId>springdoc-openapi-starter-webmvc-ui</artifactId>
+            <version>2.5.0</version>
+        </dependency>
+        <!-- Spring Boot Actuator -->
+        <dependency>
+            <groupId>org.springframework.boot</groupId>
+            <artifactId>spring-boot-starter-actuator</artifactId>
+        </dependency>
+    </dependencies>
+
+    <build>
+        <plugins>
+            <!-- Maven Compiler -->
+            <plugin>
+                <groupId>org.apache.maven.plugins</groupId>
+                <artifactId>maven-compiler-plugin</artifactId>
+                <version>3.11.0</version>
+                <configuration>
+                    <source>17</source>
+                    <target>17</target>
+                    <release>17</release>
+                </configuration>
+            </plugin>
+
+            <!-- Spring Boot Plugin -->
+            <plugin>
+                <groupId>org.springframework.boot</groupId>
+                <artifactId>spring-boot-maven-plugin</artifactId>
+                <version>${spring-boot.version}</version>
+                <executions>
+                    <execution>
+                        <goals>
+                            <goal>repackage</goal>
+                        </goals>
+                    </execution>
+                </executions>
+            </plugin>
+        </plugins>
+    </build>
+</project>
+
+### ./user-service/.mvn/wrapper/MavenWrapperDownloader.java
+/*
+ * Copyright 2007-present the original author or authors.
+ *
+ * Licensed under the Apache License, Version 2.0 (the "License");
+ * you may not use this file except in compliance with the License.
+ * You may obtain a copy of the License at
+ *
+ *      http://www.apache.org/licenses/LICENSE-2.0
+ *
+ * Unless required by applicable law or agreed to in writing, software
+ * distributed under the License is distributed on an "AS IS" BASIS,
+ * WITHOUT WARRANTIES OR CONDITIONS OF ANY KIND, either express or implied.
+ * See the License for the specific language governing permissions and
+ * limitations under the License.
+ */
+import java.net.*;
+import java.io.*;
+import java.nio.channels.*;
+import java.util.Properties;
+
+public class MavenWrapperDownloader {
+
+    private static final String WRAPPER_VERSION = "0.5.6";
+    /**
+     * Default URL to download the maven-wrapper.jar from, if no 'downloadUrl' is provided.
+     */
+    private static final String DEFAULT_DOWNLOAD_URL = "https://repo.maven.apache.org/maven2/io/takari/maven-wrapper/"
+        + WRAPPER_VERSION + "/maven-wrapper-" + WRAPPER_VERSION + ".jar";
+
+    /**
+     * Path to the maven-wrapper.properties file, which might contain a downloadUrl property to
+     * use instead of the default one.
+     */
+    private static final String MAVEN_WRAPPER_PROPERTIES_PATH =
+            ".mvn/wrapper/maven-wrapper.properties";
+
+    /**
+     * Path where the maven-wrapper.jar will be saved to.
+     */
+    private static final String MAVEN_WRAPPER_JAR_PATH =
+            ".mvn/wrapper/maven-wrapper.jar";
+
+    /**
+     * Name of the property which should be used to override the default download url for the wrapper.
+     */
+    private static final String PROPERTY_NAME_WRAPPER_URL = "wrapperUrl";
+
+    public static void main(String args[]) {
+        System.out.println("- Downloader started");
+        File baseDirectory = new File(args[0]);
+        System.out.println("- Using base directory: " + baseDirectory.getAbsolutePath());
+
+        // If the maven-wrapper.properties exists, read it and check if it contains a custom
+        // wrapperUrl parameter.
+        File mavenWrapperPropertyFile = new File(baseDirectory, MAVEN_WRAPPER_PROPERTIES_PATH);
+        String url = DEFAULT_DOWNLOAD_URL;
+        if(mavenWrapperPropertyFile.exists()) {
+            FileInputStream mavenWrapperPropertyFileInputStream = null;
+            try {
+                mavenWrapperPropertyFileInputStream = new FileInputStream(mavenWrapperPropertyFile);
+                Properties mavenWrapperProperties = new Properties();
+                mavenWrapperProperties.load(mavenWrapperPropertyFileInputStream);
+                url = mavenWrapperProperties.getProperty(PROPERTY_NAME_WRAPPER_URL, url);
+            } catch (IOException e) {
+                System.out.println("- ERROR loading '" + MAVEN_WRAPPER_PROPERTIES_PATH + "'");
+            } finally {
+                try {
+                    if(mavenWrapperPropertyFileInputStream != null) {
+                        mavenWrapperPropertyFileInputStream.close();
+                    }
+                } catch (IOException e) {
+                    // Ignore ...
+                }
+            }
+        }
+        System.out.println("- Downloading from: " + url);
+
+        File outputFile = new File(baseDirectory.getAbsolutePath(), MAVEN_WRAPPER_JAR_PATH);
+        if(!outputFile.getParentFile().exists()) {
+            if(!outputFile.getParentFile().mkdirs()) {
+                System.out.println(
+                        "- ERROR creating output directory '" + outputFile.getParentFile().getAbsolutePath() + "'");
+            }
+        }
+        System.out.println("- Downloading to: " + outputFile.getAbsolutePath());
+        try {
+            downloadFileFromURL(url, outputFile);
+            System.out.println("Done");
+            System.exit(0);
+        } catch (Throwable e) {
+            System.out.println("- Error downloading");
+            e.printStackTrace();
+            System.exit(1);
+        }
+    }
+
+    private static void downloadFileFromURL(String urlString, File destination) throws Exception {
+        if (System.getenv("MVNW_USERNAME") != null && System.getenv("MVNW_PASSWORD") != null) {
+            String username = System.getenv("MVNW_USERNAME");
+            char[] password = System.getenv("MVNW_PASSWORD").toCharArray();
+            Authenticator.setDefault(new Authenticator() {
+                @Override
+                protected PasswordAuthentication getPasswordAuthentication() {
+                    return new PasswordAuthentication(username, password);
+                }
+            });
+        }
+        URL website = new URL(urlString);
+        ReadableByteChannel rbc;
+        rbc = Channels.newChannel(website.openStream());
+        FileOutputStream fos = new FileOutputStream(destination);
+        fos.getChannel().transferFrom(rbc, 0, Long.MAX_VALUE);
+        fos.close();
+        rbc.close();
+    }
+
+}
+
+
+### ./user-service/src/test/java/com/example/userservice/controller/UserControllerTest.java
+package com.example.userservice.controller;
+
+import com.example.userservice.model.User;
+import com.example.userservice.repository.UserRepository;
+import org.junit.jupiter.api.Test;
+import org.springframework.beans.factory.annotation.Autowired;
+import org.springframework.boot.test.autoconfigure.web.servlet.WebMvcTest;
+import org.springframework.boot.test.mock.mockito.MockBean;
+import org.springframework.test.web.servlet.MockMvc;
+
+import java.util.List;
+
+import static org.mockito.Mockito.when;
+import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
+import static org.springframework.test.web.servlet.result.MockMvcResultMatchers.*;
+
+@WebMvcTest(UserController.class)
+class UserControllerTest {
+
+    @Autowired
+    private MockMvc mockMvc;
+
+    @MockBean
+    private UserRepository userRepository;
+
+    @Test
+    void testGetAllUsers_returnsUserList() throws Exception {
+        User user = new User();
+        user.setUsername("alice");
+        user.setEmail("alice@example.com");
+
+        when(userRepository.findAll()).thenReturn(List.of(user));
+
+        mockMvc.perform(get("/users"))
+                .andExpect(status().isOk());
+    }
+}
+
+
+### ./user-service/src/main/resources/application.yml
+spring:
+  datasource:
+    url: jdbc:mysql://mysql:3306/users
+    username: user
+    password: password
+  jpa:
+    hibernate:
+      ddl-auto: update
+    show-sql: true
+
+management:
+  endpoints:
+    web:
+      exposure:
+        include: ['health', 'info', 'metrics']
+  endpoint:
+    health:
+      show-details: always
+
+### ./user-service/src/main/java/com/example/userservice/repository/UserRepository.java
+// Spring Data Repository für User-Entitäten
+package com.example.userservice.repository;
+import com.example.userservice.model.User;
+import org.springframework.data.jpa.repository.JpaRepository;
+public interface UserRepository extends JpaRepository<User, String> {}
+
+
+### ./user-service/src/main/java/com/example/userservice/UserServiceApplication.java
+// Hauptklasse des User-Services
+package com.example.userservice;
+import org.springframework.boot.SpringApplication;
+import org.springframework.boot.autoconfigure.SpringBootApplication;
+@SpringBootApplication
+public class UserServiceApplication {
+    public static void main(String[] args) {
+        SpringApplication.run(UserServiceApplication.class, args);
+    }
+}
+
+
+### ./user-service/src/main/java/com/example/userservice/controller/UserController.java
+// REST-Controller für Benutzerverwaltung
+package com.example.userservice.controller;
+import com.example.userservice.model.User;
+import com.example.userservice.repository.UserRepository;
+import org.springframework.web.bind.annotation.*;
+import java.util.List;
+@RestController
+@RequestMapping("/users")
+public class UserController {
+    private final UserRepository repo;
+    public UserController(UserRepository repo) { this.repo = repo; }
+    @GetMapping
+    public List<User> getAll() { return repo.findAll(); }
+    @PostMapping
+    public User create(@RequestBody User user) {
+        return repo.save(user);
+    }
+}
+
+
+### ./user-service/src/main/java/com/example/userservice/model/User.java
+package com.example.userservice.model;
+
+// WICHTIG: Ab Spring Boot 3.x werden JPA-Annotationen aus 'jakarta.persistence' importiert!
+import jakarta.persistence.Entity;
+import jakarta.persistence.Id;
+
+@Entity
+public class User {
+    @Id
+    private String username;
+    private String email;
+
+    // Getter und Setter
+    public String getUsername() { return username; }
+    public void setUsername(String username) { this.username = username; }
+    public String getEmail() { return email; }
+    public void setEmail(String email) { this.email = email; }
+}
+
+### ./keycloak/realm-export.json
+{
+  "realm": "myrealm",
+  "enabled": true,
+  "users": [
+    {
+      "username": "alice",
+      "enabled": true,
+      "email": "alice@example.com",
+      "emailVerified": true,
+      "credentials": [
+        {
+          "type": "password",
+          "value": "alicepass",
+          "temporary": false
+        }
+      ]
+    }
+  ],
+  "clients": [
+    {
+      "clientId": "order-service",
+      "enabled": true,
+      "publicClient": true,
+      "protocol": "openid-connect",
+      "bearerOnly": false,
+      "redirectUris": [],
+      "directAccessGrantsEnabled": true
+    }
+  ]
+}
+
