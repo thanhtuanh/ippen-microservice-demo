@@ -15,31 +15,26 @@ Content-Type: application/json
   "username": "testuser",
   "email": "testuser@example.com"
 }
+
 ### Alle Benutzer anzeigen (user-service)
 GET http://localhost:8081/users
 
-
-### Token für alice mit client_secret
-POST http://localhost:8080/realms/myrealm/protocol/openid-connect/token
-Content-Type: application/x-www-form-urlencoded
-grant_type=password
-&client_id=order-service
-&username=testuser
-&password=test
-
-### Token für alice mit client_secret
+### Token für testuser holen (Keycloak, Resource Owner Password Credentials Flow)
 POST http://localhost:8080/realms/myrealm/protocol/openid-connect/token
 Content-Type: application/x-www-form-urlencoded
 
-grant_type=password&
-client_id=order-service&
-username=alice&
-password=alicepass
+grant_type=password&client_id=order-service&username=testuser&password=test
 
+### Token für alice holen (Keycloak)
+POST http://localhost:8080/realms/myrealm/protocol/openid-connect/token
+Content-Type: application/x-www-form-urlencoded
 
+grant_type=password&client_id=order-service&username=alice&password=alicepass
 
 ### Bestellung anlegen (order-service, JWT benötigt)
+# Trage deinen Token unten ein!
 POST http://localhost:8082/orders
+Content-Type: application/json
 Authorization: Bearer <TOKEN>
 
 {
@@ -49,3 +44,44 @@ Authorization: Bearer <TOKEN>
 ### Eigene Bestellungen abrufen (order-service, JWT benötigt)
 GET http://localhost:8082/orders
 Authorization: Bearer <TOKEN>
+
+########### Passende curl-Befehle für die Shell
+
+# Benutzer anlegen (alice)
+curl -X POST http://localhost:8081/users \
+  -H "Content-Type: application/json" \
+  -d '{"username":"alice","email":"alice@example.com"}'
+
+# Benutzer anlegen (testuser)
+curl -X POST http://localhost:8081/users \
+  -H "Content-Type: application/json" \
+  -d '{"username":"testuser","email":"testuser@example.com"}'
+
+# Alle Benutzer anzeigen
+curl http://localhost:8081/users
+
+# Token für alice holen
+curl -X POST http://localhost:8080/realms/myrealm/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=password" \
+  -d "client_id=order-service" \
+  -d "username=alice" \
+  -d "password=alicepass"
+
+# Token für testuser holen
+curl -X POST http://localhost:8080/realms/myrealm/protocol/openid-connect/token \
+  -H "Content-Type: application/x-www-form-urlencoded" \
+  -d "grant_type=password" \
+  -d "client_id=order-service" \
+  -d "username=testuser" \
+  -d "password=test"
+
+# Bestellung anlegen (Token eintragen!)
+curl -X POST http://localhost:8082/orders \
+  -H "Content-Type: application/json" \
+  -H "Authorization: Bearer <TOKEN>" \
+  -d '{"product":"Tisch"}'
+
+# Eigene Bestellungen abrufen (Token eintragen!)
+curl http://localhost:8082/orders \
+  -H "Authorization: Bearer <TOKEN>"

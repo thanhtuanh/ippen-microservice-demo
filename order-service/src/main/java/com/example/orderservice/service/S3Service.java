@@ -6,6 +6,8 @@ import software.amazon.awssdk.regions.Region;
 import software.amazon.awssdk.services.s3.S3Client;
 import software.amazon.awssdk.services.s3.model.PutObjectRequest;
 import java.io.InputStream;
+
+// Service für S3-Uploads (AWS), vorbereitet für Rechnungs-Upload.
 @Service
 public class S3Service {
     private final S3Client s3 = S3Client.builder()

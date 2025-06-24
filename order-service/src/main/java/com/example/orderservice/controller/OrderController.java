@@ -6,6 +6,8 @@ import org.springframework.security.core.annotation.AuthenticationPrincipal;
 import org.springframework.security.oauth2.jwt.Jwt;
 import org.springframework.web.bind.annotation.*;
 import java.util.List;
+
+// REST-Controller für Bestellungen, gesichert über JWT/OIDC. Liefert Bestellungen des authentifizierten Users.
 @RestController
 @RequestMapping("/orders")
 public class OrderController {
