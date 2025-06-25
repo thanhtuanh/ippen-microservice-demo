@@ -14,16 +14,23 @@ spec:
     spec:
       containers:
         - name: user-service
-          image: <your-docker-repo>/user-service:latest
+          image: thanhtuanh/user-service:latest
           ports:
             - containerPort: 8080
-          env: # Datenbankverbindung (am besten mit Secrets ersetzen)
+          resources:
+            requests:
+              memory: "128Mi"
+              cpu: "100m"
+            limits:
+              memory: "256Mi"
+              cpu: "500m"
+          env: 
             - name: SPRING_DATASOURCE_URL
-              value: jdbc:mysql://<aws-rds-endpoint>:3306/users
+              value: jdbc:mysql://mysql:3306/users
             - name: SPRING_DATASOURCE_USERNAME
-              value: <db-user>
+              value: demo
             - name: SPRING_DATASOURCE_PASSWORD
-              value: <db-password>
+              value: demopw
 ---
 apiVersion: v1
 kind: Service

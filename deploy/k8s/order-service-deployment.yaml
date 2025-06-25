@@ -28,6 +28,13 @@ spec:
           image: thanhtuanh/order-service:latest # Passe ggf. auf deinen DockerHub-Namen an!
           ports:
             - containerPort: 8080
+          resources:
+            requests:
+              memory: "256Mi"
+              cpu: "250m"
+            limits:
+              memory: "512Mi"
+              cpu: "500m"
           env:
             - name: SPRING_DATASOURCE_URL
               value: jdbc:mysql://mysql:3306/demo

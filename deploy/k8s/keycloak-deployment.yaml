@@ -3,9 +3,11 @@ kind: Service
 metadata:
   name: keycloak
 spec:
+  type: NodePort            # <- Das ist entscheidend!
   ports:
     - port: 8080
       targetPort: 8080
+      nodePort: 30080       # Optional: fester Port für lokalen Zugriff
   selector:
     app: keycloak
 ---
@@ -27,10 +29,14 @@ spec:
         - name: keycloak
           image: quay.io/keycloak/keycloak:24.0.4
           args: ["start-dev"]
+          resources:
+            requests:
+              memory: "512Mi"
+              cpu: "250m"
+            limits:
+              memory: "1Gi"
+              cpu: "500m"
           env:
             - name: KEYCLOAK_ADMIN
               value: admin
-            - name: KEYCLOAK_ADMIN_PASSWORD
-              value: admin
-          ports:
-            - containerPort: 8080
+            - name: KEYCLOAK_ADMIN_
