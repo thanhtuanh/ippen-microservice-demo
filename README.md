@@ -5,27 +5,6 @@ Es entstand als technisches Showcase für die Position „Senior Java Backend En
 
 ---
 
-## Inhalt
-
-- [Bezug zu Ippen Digital & USER.ID](#🎯-bezug-zu-ippen-digital--userid)
-- [Architekturüberblick](#⚙️-architekturüberblick)
-- [Services & Ports](#📦-services--ports)
-- [Schnellstart mit Docker Compose](#🚀-schnellstart-mit-docker-compose)
-- [API-Dokumentation](#📖-api-dokumentation)
-- [Kubernetes Deployment](#☁️-kubernetes-deployment)
-- [Authentifizierung (Keycloak & JWT)](#🔐-authentifizierung-keycloak--jwt)
-- [Beispiel-API-Aufrufe](#🌐-beispiel-api-aufrufe)
-- [Technologien](#🛠️-technologien)
-- [Build & CI/CD](#🔁-build--cicd)
-- [Unit- & Integrationstests](#✅-unit--integrationstests)
-- [Beispiel: API-Test mit curl](#📸-beispiel-api-test-mit-curl)
-- [Monitoring & Logging](#📊-monitoring--logging)
-- [Hinweise & Best Practices](#📝-hinweise--best-practices)
-- [Weiterführende Themen & Empfehlungen](#🚀-weiterführende-themen--empfehlungen)
-- [Autor](#👤-autor)
-
----
-
 ## 🎯 Bezug zu Ippen Digital & USER.ID
 
 - **Microservice-Prinzipien**: Klare Trennung, RESTful APIs, Cloud-native Design
